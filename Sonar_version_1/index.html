@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonar Visualization</title>
+    
+    <!-- Tailwind CSS (via CDN for quick styling) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Link to your custom CSS file -->
+    <link rel="stylesheet" href="style2.css">
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans overflow-hidden h-screen flex flex-col lg:flex-row">
+
+    <!-- Left Panel: Controls -->
+    <div class="w-full lg:w-80 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-800 bg-slate-900/50 backdrop-blur-sm z-10 h-auto lg:h-full">
+        <div class="p-6 border-b border-slate-800">
+            <div class="flex items-center gap-3 mb-1">
+                <div class="p-2 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
+                    <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+                </div>
+                <h1 class="text-xl font-bold text-slate-100">Sonar View</h1>
+            </div>
+            <p class="text-xs text-slate-500 ml-1">Radial Temporal Analysis</p>
+        </div>
+
+        <div class="p-6 space-y-6 overflow-y-auto flex-1">
+            <!-- Filters -->
+            <div class="space-y-3">
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Filter Signal</label>
+                <div id="filter-container" class="grid grid-cols-1 gap-2">
+                    <!-- Buttons injected by JS -->
+                </div>
+            </div>
+
+            <!-- Details Panel -->
+            <div id="details-panel" class="relative p-4 rounded-xl bg-slate-900 border border-slate-800 min-h-[160px] flex flex-col justify-center">
+                <!-- Default State -->
+                <div id="details-empty" class="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
+                    <div class="w-12 h-12 rounded-full border-2 border-dashed border-slate-700 flex items-center justify-center">
+                        <div class="w-2 h-2 bg-slate-700 rounded-full animate-ping"></div>
+                    </div>
+                    <span class="text-xs">Hover over signal points</span>
+                </div>
+                
+                <!-- Active State -->
+                <div id="details-content" class="fade-in hidden space-y-3">
+                    <div>
+                        <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Detected Event</div>
+                        <div class="text-lg font-mono font-bold text-white flex items-center gap-2">
+                            <span id="detail-time">--:--</span>
+                            <span id="detail-day" class="text-sm font-normal text-slate-400">on Mon</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="p-2 bg-slate-800/50 rounded border border-slate-700/50">
+                            <div class="text-[10px] text-slate-500">Amplitude</div>
+                            <div id="detail-amp" class="text-sm font-mono text-cyan-300">0 dB</div>
+                        </div>
+                        <div class="p-2 bg-slate-800/50 rounded border border-slate-700/50">
+                            <div class="text-[10px] text-slate-500">Type</div>
+                            <div id="detail-type" class="text-sm font-medium">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pt-4 border-t border-slate-800">
+                <button id="scan-toggle" class="w-full py-2 text-xs text-slate-400 hover:text-white border border-slate-700 rounded hover:bg-slate-800 transition-colors">
+                    Stop Radar Sweep
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Panel: Visualization -->
+    <div class="flex-1 relative flex items-center justify-center bg-slate-950 overflow-hidden" id="viz-container">
+        <!-- Grid Background -->
+        <div class="absolute inset-0 opacity-[0.03]" style="background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px); background-size: 40px 40px;"></div>
+
+        <!-- Radar Container -->
+        <div class="relative w-[600px] h-[600px] lg:w-[700px] lg:h-[700px] flex items-center justify-center select-none">
+            
+            <!-- Sweep Animation -->
+            <div id="radar-sweep" class="absolute inset-0 rounded-full animate-scan pointer-events-none z-0">
+                 <div class="w-full h-full radar-gradient rounded-full opacity-50"></div>
+            </div>
+
+            <!-- SVG -->
+            <svg id="radar-svg" class="w-full h-full overflow-visible z-10" viewBox="-350 -350 700 700">
+                <g class="origin-center">
+                    <g id="static-layer"></g>
+                    <g id="data-layer"></g>
+                    <!-- Center Decoration -->
+                    <circle r="30" fill="#0f172a" stroke="#334155" stroke-width="2" />
+                    <circle r="4" fill="#06b6d4" class="animate-pulse">
+                        <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                </g>
+            </svg>
+        </div>
+
+        <!-- Legend -->
+        <div class="absolute bottom-6 right-6 flex flex-col gap-2 bg-slate-900/80 p-3 rounded-lg border border-slate-800 backdrop-blur-sm text-xs text-slate-400 pointer-events-none">
+            <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-slate-500"></span><span>Rings = Days (Mon → Sun)</span></div>
+            <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-slate-500"></span><span>Angle = Time (24h)</span></div>
+            <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-slate-500"></span><span>Size = Amplitude</span></div>
+        </div>
+    </div>
+
+    <!-- Link to your custom JS file -->
+    <script src="script2.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+/* Custom Animations */
+@keyframes scan {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.animate-scan {
+    animation: scan 4s linear infinite;
+}
+
+.radar-gradient {
+    background: conic-gradient(from 180deg, transparent 0deg, rgba(6, 182, 212, 0.1) 60deg, rgba(6, 182, 212, 0.4) 90deg, transparent 90.1deg);
+}
+
+/* Tooltip transition */
+.fade-in {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Dot transition */
+circle {
+    transition: all 0.3s ease;
+}

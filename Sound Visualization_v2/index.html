@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Seismic Visualization</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h1>3D Seismic Visualization</h1>
+            <p class="subtitle">Interactive Data Explorer</p>
+
+            <!-- Filters -->
+            <div class="section">
+                <h3 class="section-title">Category Filter</h3>
+                <div class="filters">
+                    <button class="filter-btn active" data-category="all">All Categories</button>
+                    <button class="filter-btn" data-category="region">Region</button>
+                    <button class="filter-btn" data-category="illegal">Illegal Activity</button>
+                    <button class="filter-btn" data-category="form_changing">Form Changing</button>
+                    <button class="filter-btn" data-category="entrance">Specific Entrance</button>
+                </div>
+            </div>
+
+            <!-- View Controls -->
+            <div class="section">
+                <h3 class="section-title">View Controls</h3>
+                
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Rotation Z (Spin)</span>
+                        <span class="control-value" id="rotationZValue">45°</span>
+                    </div>
+                    <input type="range" id="rotationZ" min="0" max="360" value="45" step="1">
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Rotation X (Tilt)</span>
+                        <span class="control-value" id="rotationXValue">60°</span>
+                    </div>
+                    <input type="range" id="rotationX" min="0" max="90" value="60" step="1">
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Zoom</span>
+                        <span class="control-value" id="zoomValue">1.0x</span>
+                    </div>
+                    <input type="range" id="zoom" min="0.5" max="2" value="1" step="0.1">
+                </div>
+
+                <button class="auto-rotate-btn" id="autoRotateBtn">Auto Rotate</button>
+            </div>
+
+            <!-- Info Panel -->
+            <div class="section">
+                <h3 class="section-title">Data Info</h3>
+                <div class="info-panel" id="infoPanel">
+                    <div class="info-placeholder">Hover over a bar to see details</div>
+                </div>
+            </div>
+
+            <!-- Axes Info -->
+            <div class="section">
+                <h3 class="section-title">Axes:</h3>
+                <div style="font-size: 0.75rem; color: rgba(255,255,255,0.7); line-height: 1.6;">
+                    <div><strong style="color: #3b82f6;">X-axis (Blue):</strong> Time of Day (0-24h)</div>
+                    <div><strong style="color: #22c55e;">Y-axis (Cyan):</strong> Day of Week</div>
+                    <div><strong style="color: #ef4444;">Z-axis (Height):</strong> Signal Amplitude</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="viewport" id="viewport">
+                <div class="scene-container">
+                    <div class="scene" id="scene">
+                        <!-- Grid -->
+                        <div class="grid-lines" id="gridLines"></div>
+                        
+                        <!-- Axis labels -->
+                        <div class="axis-labels" id="axisLabels"></div>
+                        
+                        <!-- Data points -->
+                        <div class="data-points" id="dataPoints"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
