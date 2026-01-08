@@ -1,0 +1,405 @@
+<!DOCTYPE html><html lang="en"><head><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acoustic Spatial Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .perspective-container {
+            perspective: 1200px;
+        }
+        .preserve-3d {
+            transform-style: preserve-3d;
+        }
+        
+        /* Ensure bars are visible with enhanced rendering */
+        .bar-3d {
+            backface-visibility: visible;
+            -webkit-backface-visibility: visible;
+            will-change: transform;
+        }
+        
+        /* Grid background */
+        .grid-bg {
+            background-image: radial-gradient(circle at center, #4f46e5 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 m-0 p-0 overflow-hidden">
+    <div id="app" class="flex flex-col h-screen"></div>
+
+    <script>
+        const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const CATEGORIES = [
+            { id: 'region', label: 'Region', color: 'bg-blue-500', hex: '#3b82f6' },
+            { id: 'illegal', label: 'Illegal Activity', color: 'bg-red-500', hex: '#ef4444' },
+            { id: 'form_changing', label: 'Form Changing', color: 'bg-purple-500', hex: '#a855f7' },
+            { id: 'entrance', label: 'Specific Entrance', color: 'bg-green-500', hex: '#22c55e' },
+        ];
+
+        // SVG Icons as strings
+        const icons = {
+            volume: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>',
+            rotate3d: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>',
+            info: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>'
+        };
+
+        function generateData(count = 200) {
+            return Array.from({ length: count }).map((_, i) => {
+                const dayIndex = Math.floor(Math.random() * 7);
+                const hour = Math.floor(Math.random() * 24);
+                const minute = Math.floor(Math.random() * 60);
+                const category = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+                let baseAmp = Math.random() * 50;
+                
+                if (category.id === 'illegal' && (hour > 22 || hour < 4)) {
+                    baseAmp += 40;
+                }
+                if (category.id === 'entrance' && (hour > 8 && hour < 18)) {
+                    baseAmp += 20;
+                }
+
+                return {
+                    id: i,
+                    dayIndex,
+                    day: DAYS[dayIndex],
+                    time: hour + minute / 60,
+                    timeLabel: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`,
+                    category: category.id,
+                    amplitude: Math.min(100, Math.max(10, baseAmp)),
+                };
+            });
+        }
+
+        class Visualizer {
+            constructor() {
+                this.data = generateData(200);
+                this.rotation = { x: 60, z: 45 };
+                this.selectedCategory = 'all';
+                this.hoveredPoint = null;
+                this.isAutoRotating = false;
+                this.zoom = 1;
+                this.autoRotateInterval = null;
+                this.isDragging = false;
+                
+                this.init();
+            }
+
+            init() {
+                this.render();
+                this.attachEventListeners();
+            }
+
+            getFilteredData() {
+                if (this.selectedCategory === 'all') return this.data;
+                return this.data.filter(d => d.category === this.selectedCategory);
+            }
+
+            getX(time) {
+                return ((time / 24) * 100) - 50;
+            }
+
+            getY(dayIndex) {
+                return ((dayIndex / 6) * 100) - 50;
+            }
+
+            getZ(amp) {
+                return amp * 0.8;
+            }
+
+            toggleAutoRotate() {
+                this.isAutoRotating = !this.isAutoRotating;
+                if (this.isAutoRotating) {
+                    this.autoRotateInterval = setInterval(() => {
+                        this.rotation.z = (this.rotation.z + 0.5) % 360;
+                        this.updateScene();
+                    }, 50);
+                } else {
+                    clearInterval(this.autoRotateInterval);
+                }
+                this.render();
+            }
+
+            updateScene() {
+                const scene = document.getElementById('scene-3d');
+                if (scene) {
+                    scene.style.transform = `scale(${this.zoom}) rotateX(${this.rotation.x}deg) rotateZ(${this.rotation.z}deg)`;
+                }
+            }
+
+            attachEventListeners() {
+                // Category filters
+                document.querySelectorAll('.category-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        this.selectedCategory = e.currentTarget.dataset.category;
+                        this.render();
+                    });
+                });
+
+                // Rotation X slider
+                document.getElementById('rotX').addEventListener('input', (e) => {
+                    this.rotation.x = parseFloat(e.target.value);
+                    this.updateScene();
+                });
+
+                // Rotation Z slider
+                document.getElementById('rotZ').addEventListener('input', (e) => {
+                    this.rotation.z = parseFloat(e.target.value);
+                    this.updateScene();
+                });
+
+                // Zoom slider
+                document.getElementById('zoom').addEventListener('input', (e) => {
+                    this.zoom = parseFloat(e.target.value);
+                    this.updateScene();
+                });
+
+                // Auto rotate button
+                document.getElementById('autoRotate').addEventListener('click', () => {
+                    this.toggleAutoRotate();
+                });
+
+                // Drag to rotate
+                const viewport = document.getElementById('viewport');
+                viewport.addEventListener('mousedown', (e) => {
+                    this.isDragging = true;
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const startRotX = this.rotation.x;
+                    const startRotZ = this.rotation.z;
+
+                    const handleMove = (moveEvent) => {
+                        if (!this.isDragging) return;
+                        const deltaX = moveEvent.clientX - startX;
+                        const deltaY = moveEvent.clientY - startY;
+                        this.rotation.x = Math.max(0, Math.min(90, startRotX - deltaY * 0.5));
+                        this.rotation.z = startRotZ + deltaX * 0.5;
+                        this.updateScene();
+                        document.getElementById('rotX').value = this.rotation.x;
+                        document.getElementById('rotZ').value = this.rotation.z;
+                    };
+
+                    const handleUp = () => {
+                        this.isDragging = false;
+                        document.removeEventListener('mousemove', handleMove);
+                        document.removeEventListener('mouseup', handleUp);
+                    };
+
+                    document.addEventListener('mousemove', handleMove);
+                    document.addEventListener('mouseup', handleUp);
+                });
+            }
+
+            render() {
+                const filteredData = this.getFilteredData();
+                
+                document.getElementById('app').innerHTML = `
+                    <!-- Header -->
+                    <header class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 backdrop-blur-md z-10">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 bg-indigo-500 rounded-lg">
+                                ${icons.volume}
+                            </div>
+                            <div>
+                                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">
+                                    Acoustic Spatial Visualizer
+                                </h1>
+                                <p class="text-xs text-slate-400">3D Amplitude Analysis</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-4">
+                            <div class="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                                <button class="category-btn px-3 py-1.5 text-sm rounded-md transition-colors ${this.selectedCategory === 'all' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'}" data-category="all">
+                                    All
+                                </button>
+                                ${CATEGORIES.map(cat => `
+                                    <button class="category-btn px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-2 ${this.selectedCategory === cat.id ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'}" data-category="${cat.id}">
+                                        <span class="w-2 h-2 rounded-full ${cat.color}"></span>
+                                        ${cat.label}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </header>
+
+                    <!-- Main Content -->
+                    <div class="flex-1 relative flex overflow-hidden">
+                        
+                        <!-- Sidebar Controls -->
+                        <div class="w-64 bg-slate-800/30 border-r border-slate-700 p-4 flex flex-col gap-6 z-10 backdrop-blur-sm">
+                            
+                            <div class="space-y-2">
+                                <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                                    ${icons.rotate3d} View Controls
+                                </h3>
+                                <div class="p-3 bg-slate-800 rounded-lg border border-slate-700 space-y-4">
+                                    <div>
+                                        <label class="text-xs text-slate-500 block mb-1">Rotation Z (Spin): ${Math.round(this.rotation.z)}°</label>
+                                        <input id="rotZ" type="range" min="0" max="360" value="${this.rotation.z}" 
+                                            class="w-full accent-indigo-500 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-slate-500 block mb-1">Rotation X (Tilt): ${Math.round(this.rotation.x)}°</label>
+                                        <input id="rotX" type="range" min="0" max="90" value="${this.rotation.x}" 
+                                            class="w-full accent-indigo-500 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-slate-500 block mb-1">Zoom: ${this.zoom.toFixed(1)}x</label>
+                                        <input id="zoom" type="range" min="0.5" max="2" step="0.1" value="${this.zoom}" 
+                                            class="w-full accent-indigo-500 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer">
+                                    </div>
+                                    <button id="autoRotate" class="w-full py-2 text-xs font-medium rounded border transition-colors ${this.isAutoRotating ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}">
+                                        ${this.isAutoRotating ? 'Stop Rotation' : 'Auto Rotate'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2">
+                                <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                                    ${icons.info} Data Point Info
+                                </h3>
+                                <div id="info-panel" class="p-3 bg-slate-800 rounded-lg border border-slate-700 min-h-[120px]">
+                                    <div class="h-full flex items-center justify-center text-xs text-slate-500 italic text-center">
+                                        Hover over a bar in the 3D space to see details
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-auto">
+                                <div class="text-[10px] text-slate-500">
+                                    <p>X-Axis: Time of Day (00-24)</p>
+                                    <p>Y-Axis: Day of Week (Mon-Sun)</p>
+                                    <p>Z-Axis: Amplitude (Height)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3D Viewport -->
+                        <div id="viewport" class="flex-1 relative bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800 cursor-move perspective-container">
+                            <!-- Grid Background -->
+                            <div class="absolute inset-0 opacity-20 pointer-events-none grid-bg"></div>
+
+                            <!-- The 3D Scene -->
+                            <div id="scene-3d" class="absolute top-1/2 left-1/2 w-0 h-0 preserve-3d transition-transform duration-100"
+                                 style="transform: scale(${this.zoom}) rotateX(${this.rotation.x}deg) rotateZ(${this.rotation.z}deg)">
+                                
+                                <!-- Base Planes -->
+                                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border-2 border-slate-600 bg-slate-800/30 rounded-full opacity-30"></div>
+                                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] border border-slate-600 rounded-full opacity-20"></div>
+                                
+                                <!-- Axis Lines -->
+                                <div class="absolute top-1/2 left-1/2 w-[500px] h-[2px] bg-indigo-500/70 -translate-x-1/2 -translate-y-1/2"></div>
+                                <div class="absolute top-1/2 left-1/2 w-[2px] h-[500px] bg-cyan-500/70 -translate-x-1/2 -translate-y-1/2"></div>
+
+                                <!-- Axis Labels -->
+                                <div class="absolute text-xs text-indigo-400 font-mono whitespace-nowrap" style="transform: translate3d(260px, 0, 0) rotateZ(-90deg)">Time (24h) ▶</div>
+                                <div class="absolute text-xs text-cyan-400 font-mono whitespace-nowrap" style="transform: translate3d(0, 260px, 0)">Day (Mon-Sun) ▼</div>
+
+                                <!-- Data Points -->
+                                ${filteredData.map(d => {
+                                    const xPos = this.getX(d.time) * 5;
+                                    const yPos = this.getY(d.dayIndex) * 5;
+                                    const height = this.getZ(d.amplitude) * 2;
+                                    const catColor = CATEGORIES.find(c => c.id === d.category);
+                                    
+                                    return `
+                                        <div class="absolute top-1/2 left-1/2 preserve-3d group bar-container" 
+                                             data-id="${d.id}"
+                                             data-time="${d.timeLabel}"
+                                             data-day="${d.day}"
+                                             data-category="${d.category}"
+                                             data-amplitude="${Math.round(d.amplitude)}"
+                                             style="transform: translate3d(${xPos}px, ${yPos}px, 0)">
+                                            
+                                            <!-- The Bar -->
+                                            <div class="bar-3d w-3 transition-all duration-300 cursor-pointer opacity-90 hover:opacity-100 hover:brightness-150"
+                                                 style="height: ${height}px;
+                                                        background-color: ${catColor.hex};
+                                                        transform: rotateX(-90deg) translateY(-100%);
+                                                        transform-origin: bottom;
+                                                        box-shadow: 0 0 15px ${catColor.hex}60, inset 0 0 5px rgba(255,255,255,0.2)">
+                                            </div>
+                                            
+                                            <!-- Floor Shadow -->
+                                            <div class="absolute w-3 h-3 rounded-full bg-black blur-sm"
+                                                 style="transform: translate(-50%, -50%); opacity: ${0.3 + (d.amplitude / 200)}"></div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Re-attach event listeners after render
+                this.attachEventListeners();
+                this.attachBarHoverListeners();
+            }
+
+            attachBarHoverListeners() {
+                document.querySelectorAll('.bar-container').forEach(bar => {
+                    bar.addEventListener('mouseenter', (e) => {
+                        const el = e.currentTarget;
+                        const info = {
+                            timeLabel: el.dataset.time,
+                            day: el.dataset.day,
+                            category: el.dataset.category,
+                            amplitude: el.dataset.amplitude
+                        };
+                        this.showInfo(info);
+                    });
+                    
+                    bar.addEventListener('mouseleave', () => {
+                        this.hideInfo();
+                    });
+                });
+            }
+
+            showInfo(data) {
+                const catColor = CATEGORIES.find(c => c.id === data.category);
+                document.getElementById('info-panel').innerHTML = `
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                            <span class="text-xs text-slate-400">Time</span>
+                            <span class="font-mono text-sm text-indigo-300">${data.timeLabel}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                            <span class="text-xs text-slate-400">Day</span>
+                            <span class="font-mono text-sm text-indigo-300">${data.day}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                            <span class="text-xs text-slate-400">Category</span>
+                            <span class="text-xs px-2 py-0.5 rounded-full ${catColor.color} text-white">
+                                ${catColor.label}
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1">
+                            <span class="text-xs text-slate-400">Amplitude</span>
+                            <div class="flex items-center gap-2">
+                                <div class="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-green-400 to-red-500" 
+                                         style="width: ${data.amplitude}%"></div>
+                                </div>
+                                <span class="font-mono text-sm font-bold">${data.amplitude}dB</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            hideInfo() {
+                document.getElementById('info-panel').innerHTML = `
+                    <div class="h-full flex items-center justify-center text-xs text-slate-500 italic text-center">
+                        Hover over a bar in the 3D space to see details
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize the app
+        new Visualizer();
+    </script>
+
+
+</body></html>
